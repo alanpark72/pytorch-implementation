@@ -1,11 +1,4 @@
 import os
-import yaml
-
-def getConfig(path="./config/sample_train.yaml"):
-    with open(path, 'r') as f:
-        config=yaml.load(f, yaml.FullLoader)
-    
-    return config
 
 def checkDir(path, auto_increment=False):
     if os.path.exists(path):

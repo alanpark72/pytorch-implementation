@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -16,6 +17,27 @@ from utils.dataloader import Dataset
 from utils.utils import getConfig, checkDir
 from model.vgg import VGG19, VGG16
 
+
+def caseSetter(model, device, case, lr):
+    if case.split("_")[0] == "Adam":
+        optimizer_transfer = Adam(model.parameters(), lr=lr)
+    elif case.split("_")[0] == "Adamax":
+        optimizer_transfer = Adamax(model.parameters(), lr=lr)
+    elif case.split("_")[0] == "SGD":
+        optimizer_transfer = SGD(model.parameters(), lr=lr, weight_decay=0.0005, momentum=0.9)
+    else:
+        print("ERROR : Selected Optimizer is not exist.")
+        exit()
+    
+    if case.split("_")[-1] == "XEtrp":
+        criterion_transfer = CrossEntropyLoss().to(device)
+    elif case.split("_")[-1] == "BCE":
+        criterion_transfer = BCEWithLogitsLoss().to(device)
+    else:
+        print("ERROR : Selected Criterion is not exist.")
+        exit()
+
+    return optimizer_transfer, criterion_transfer
 
 def loadBatch(config, is_classification=False):
     _transform = transforms.Compose([
@@ -40,44 +62,30 @@ def loadBatch(config, is_classification=False):
     
     return train_batches, valid_batches
 
-def caseSetter(model, device, case, lr):
-    if case.split("_")[0] == "Adam":
-        optimizer_transfer = Adam(model.parameters(), lr=lr)
-    elif case.split("_")[0] == "Adamax":
-        optimizer_transfer = Adamax(model.parameters(), lr=lr)
-    elif case.split("_")[0] == "SGD":
-        optimizer_transfer = SGD(model.parameters(), lr=lr, weight_decay=0.0005, momentum=0.9)
+def loadModel(weight, type="vgg19"):
+    if type == "vgg19":
+        model = VGG19(num_cls=config["num_cls"])
     else:
-        print("ERROR : Selected Optimizer is not exist.")
-        exit()
-    
-    if case.split("_")[-1] == "XEtrp":
-        criterion_transfer = CrossEntropyLoss().to(device)
-    elif case.split("_")[-1] == "BCE":
-        criterion_transfer = BCEWithLogitsLoss().to(device)
-    else:
-        print("ERROR : Selected Criterion is not exist.")
-        exit()
-
-    return optimizer_transfer, criterion_transfer
-
-def loadModel(weight, type=19):
-    if type == 19:
-        model = VGG19()
-    else:
-        model = VGG16()
-    print(model)
+        model = VGG16(num_cls=config["num_cls"])
     
     if weight:
-        model = model.load_state_dict(torch.load(weight))
-    
+        if os.path.isfile(weight):
+            model.load_state_dict(torch.load(weight))
+            print("Weight file {} load successfully.".format(weight))
+        else:
+            print("Weight file {} is missing.\nPlease check the file name.".format(weight))
+    else :
+        print("Disable using pretrained weight.")
+        
     return model
 
-def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cuda):
+def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cuda, save_path):
     if use_cuda:
-        model.cuda()
+        model = model.cuda()
     
     min_val_loss = np.Inf
+    early_stop = config["early_stop"]
+    cnt = 0
     
     lst_tr_loss = []
     lst_val_loss = []
@@ -88,16 +96,15 @@ def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cud
         tr_loss = 0.
         val_loss = 0.
         
-        save_path = "./result/{}/train/".format(config["name"])
-        checkDir(save_path)
         weight_path = save_path+"weights/"
         
+        print("Epoch #{}".format(epoch))
         print("Train Batches")
         
         model.train()
         tr_bar = ProgressBar(len(train_batches))
         
-        for batch, data in enumerate(train_batches):
+        for data in train_batches:
             image = data[0].to(device, dtype=torch.float32)
             target = data[1].to(device, dtype=torch.long)
             
@@ -116,16 +123,15 @@ def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cud
             torch.cuda.empty_cache()
         
         print("\nValidation Batches")
-
+        
         model.eval()
         val_bar = ProgressBar(len(valid_batches))
         
-        for batch, data in enumerate(valid_batches):
+        for data in valid_batches:
             image = data[0].to(device, dtype=torch.float32)
             target = data[1].to(device, dtype=torch.long)
             
             output = model(image)
-            
             loss = cri(output, target)
             
             val_loss += loss.item()*image.size(0)
@@ -137,19 +143,28 @@ def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cud
         lst_tr_loss.append(tr_loss)
         lst_val_loss.append(val_loss)
         
-        if val_loss <= min_val_loss:
+        if val_loss < min_val_loss:
             checkDir(weight_path)
             weight_path += "epoch{}.pt".format(epoch)
             torch.save(model.state_dict(), weight_path)
             print("Validation loss decreased ({:.10f} --> {:.10f})\nSaving current model file at: {}".format(min_val_loss, val_loss, weight_path))
             min_val_loss = val_loss
+            cnt = 0
         elif epoch == epochs-1:
             checkDir(weight_path)
             weight_path += "last.pt"
             torch.save(model.state_dict(), weight_path)
             print("Training End.")
-
-        print("Epoch #{}\tTraining Loss: {:.10f}\tValidation Loss: {:.10f}\tLearning Rate: {}\n".format(epoch,tr_loss,val_loss,config["lr"]))
+        else:
+            cnt += 1
+            if cnt >= early_stop:
+                weight_path += "last.pt"
+                torch.save(model.state_dict(), weight_path)
+                print("Result #{}\tTraining Loss: {:.10f}\tValidation Loss: {:.10f}\tLearning Rate: {}\n".format(epoch,tr_loss,val_loss,config["lr"]))
+                print("Early stop training at epoch: {}".format(epoch))
+                break
+            
+        print("Result #{}\tTraining Loss: {:.10f}\tValidation Loss: {:.10f}\tLearning Rate: {}\n".format(epoch,tr_loss,val_loss,config["lr"]))
     
     x_len = np.arange(len(lst_tr_loss))
     
@@ -165,14 +180,25 @@ def train(model, train_batches, valid_batches, epochs, opt, cri, device, use_cud
 def run(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     use_cuda = torch.cuda.is_available()
+    print("On Device : ", device)
     
-    model = loadModel(config["weight"], type=19) ## type: 19 or 16 (VGG-19 or VGG-16)
+    model = loadModel(config["weight"], type=config["model"]) ## type: 19 or 16 (VGG-19 or VGG-16)
     train_batches, valid_batches = loadBatch(config, is_classification=True)
     opt, cri = caseSetter(model, device, config["case"], config["lr"])
     
-    train(model, train_batches, valid_batches, config["epoch"], opt, cri, device, use_cuda)
+    result_path = "./result/{}/".format(config["name"])
+    result_path = checkDir(result_path, auto_increment=True)
+    save_path = result_path + "train/"
+    checkDir(save_path)
+    
+    with open("{}opt.txt".format(save_path), "w") as f:
+        f.writelines("dataset: {}\nname: {}\nmodel: {}\nweight: {}\nnum_cls: {}\nearly_stop: {}\nimgsz: {}\nbatch: {}\nepoch: {}\nlr: {}\ncase: {}\n".format(
+                    config["dataset"], config["name"], config["model"], config["weight"], config["num_cls"], config["early_stop"], config["imgsz"], config["batch"], config["epoch"], config["lr"], config["case"]))
+        f.close()
+    
+    train(model, train_batches, valid_batches, config["epoch"], opt, cri, device, use_cuda, save_path)
 
 
 if __name__=="__main__":
-    config = getConfig("./configs/config_train.yaml")
+    config = getConfig(path="./config/sample_train.yaml")
     run(config)
