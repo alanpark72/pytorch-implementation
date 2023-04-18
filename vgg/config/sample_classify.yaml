@@ -1,0 +1,6 @@
+dataset: path/to/data/ # Dataset path (string)
+name: cls_vgg-19 # Name of classification sequence (string)
+model: vgg19 # VGG model type (vgg19 or vgg16) (string)
+num_cls: # Number of Classes (int)
+weight: /path/to/weight.pt # Pretrained weight file path (string)
+imgsz: 256 # Resizing size (int)
