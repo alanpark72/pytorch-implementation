@@ -1,0 +1,5 @@
+dataset: path/to/data/ # Dataset path (string)
+name: cls_alexnet # Name of classification sequence (string)
+num_cls: 2 # Number of Classes (int)
+weight: /path/to/weight.pt # Pretrained weight file path (string)
+imgsz: 256 # Resizing size (int)

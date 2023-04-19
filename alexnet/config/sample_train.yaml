@@ -1,0 +1,10 @@
+dataset: path/to/data/ # Dataset path (string)
+name: alexnet # Name of Training sequence (string)
+weight: /path/to/weight.pt # Pretrained weight file path (string)
+num_cls: 2 # Number of Classes (int)
+early_stop: 10 # Early Stop Count (int)
+imgsz: 256 # Resizing size (int)
+lr: 0.01 # Learning Rate (exponential or float)
+batch: 24 # Batch size (int)
+epoch: 100 # Epochs (int)
+case: SGD_XEtrp # Opt_Cri (Opt: Adam, Adamax, SGD // Cri: XEtrp(Cross Entropy), BCE)(string) ※ TBD: Dice & Focal 
