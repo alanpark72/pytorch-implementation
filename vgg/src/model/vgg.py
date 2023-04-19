@@ -88,10 +88,10 @@ class VGG19(nn.Module):
         return x
         
 class VGG16(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, in_ch=3, num_cls=1000):
         super(VGG16, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
@@ -151,7 +151,7 @@ class VGG16(nn.Module):
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
-            nn.Linear(4096, num_classes)
+            nn.Linear(4096, num_cls)
         )
         
     def forward(self, x):
